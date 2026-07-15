@@ -797,6 +797,24 @@ function generateWeeks(){
   }
   return weeks;
 }
+// Returns array of date strings (YYYY-MM-DD) that are still-remaining WORKING days
+// between `now` and S.endDate — weekends and public holidays are excluded.
+// A day already past its end-time is not counted as remaining; today still counts
+// if the work day hasn't ended yet.
+function getRemainingWorkdays(now){
+  const days=[];
+  const[eh,em]=S.endTime.split(':').map(Number);
+  let cur=normDate(now);
+  while(cur<=S.endDate){
+    if(!isWeekend(cur)&&!getHoliday(cur)){
+      const de=new Date(cur+'T'+pad(eh)+':'+pad(em)+':00');
+      if(de>=now)days.push(cur);
+    }
+    cur=addDays(cur,1);
+  }
+  return days;
+}
+
 function dayStatus(s){
   const now=new Date();
   if(S.leaves.some(l=>l.date===s))return 'leave';
@@ -819,17 +837,18 @@ function updateHome(){
   document.getElementById('tb-date').textContent=`${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
   document.getElementById('tb-clock').textContent=`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-  const end=new Date(S.endDate+'T23:59:59');
-  const totalDays=Math.max(0,Math.floor((end-now)/86400000));
+  // Working-day-based countdown: weekends and public holidays are excluded entirely.
+  const workDays=getRemainingWorkdays(now);
+  const totalWorkDays=workDays.length;
 
-  // Accurate breakdown: calendar months, then remaining weeks and days
-  let months=0;
-  let cursor=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  const endDay=new Date(end.getFullYear(),end.getMonth(),end.getDate());
-  while(true){const next=new Date(cursor);next.setMonth(next.getMonth()+1);if(next>endDay)break;months++;cursor=next;}
-  const remainAfterMonths=Math.round((endDay-cursor)/86400000);
-  const weeks=Math.floor(remainAfterMonths/7);
-  const days=remainAfterMonths%7;
+  // Break the remaining working days into months/weeks/days using a standard
+  // 5-day work week (~21 working days/month, ~5 working days/week).
+  const WORKDAYS_PER_MONTH=21;
+  const WORKDAYS_PER_WEEK=5;
+  const months=Math.floor(totalWorkDays/WORKDAYS_PER_MONTH);
+  const remainAfterMonths=totalWorkDays-months*WORKDAYS_PER_MONTH;
+  const weeks=Math.floor(remainAfterMonths/WORKDAYS_PER_WEEK);
+  const days=remainAfterMonths%WORKDAYS_PER_WEEK;
 
   document.getElementById('h-months').textContent=months;
   document.getElementById('h-months-s').textContent=months===1?'':'S';
@@ -843,8 +862,8 @@ function updateHome(){
   if(months)parts.push(`${months} month${months===1?'':'s'}`);
   if(weeks)parts.push(`${weeks} week${weeks===1?'':'s'}`);
   if(days||!parts.length)parts.push(`${days} day${days===1?'':'s'}`);
-  document.getElementById('h-total-weeks').textContent=Math.floor(totalDays/7);
-  document.getElementById('h-total-days').textContent=totalDays;
+  document.getElementById('h-total-weeks').textContent=Math.floor(totalWorkDays/WORKDAYS_PER_WEEK);
+  document.getElementById('h-total-days').textContent=totalWorkDays;
 
   const[sh,sm]=S.startTime.split(':').map(Number);
   const[eh,em]=S.endTime.split(':').map(Number);
